@@ -4,11 +4,12 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from time import time
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, confusion_matrix
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
+# from keras.layers import Input, Embedding, Dense
+# from keras.models import Model
+
+plt.style.use('seaborn-poster')
 
 # regex matching NSP numbers
 rgxNSP = r'NSP\D{0,2}\/{0,1}\d{2}\D{0,2}\/{0,1}\d{2}\D{0,2}\/{0,1}\d*'
@@ -30,17 +31,8 @@ sopdb = pyodbc.connect("Driver={SQL Server Native Client 11.0};"
                     "Trusted_Connection=yes;")
 
 sql = '''SELECT DISTINCT
-            CASE WHEN Ldc_LeadSource IS NULL THEN 0 ELSE Ldc_LeadSource END as 'Ldc_LeadSource',
             CASE WHEN Ldc_Status IS NULL THEN 0 ELSE Ldc_Status END as 'Ldc_Status',
-            CASE WHEN Ldc_Trustee IS NULL THEN 0 ELSE Ldc_Trustee END as 'Ldc_Trustee',
             CASE WHEN Ldc_FeeType IS NULL THEN 0 ELSE Ldc_FeeType END as 'Ldc_FeeType',
-            CASE WHEN ga_PerpetualAppointment IS NULL THEN 0 ELSE ga_PerpetualAppointment END as 'ga_PerpetualAppointment',
-            CASE WHEN [CustomerTypeCode] IS NULL THEN 0 ELSE [CustomerTypeCode] END as 'CustomerTypeCode',
-            CASE WHEN c.OwnerIdName IS NULL THEN '' ELSE c.OwnerIdName END as 'OwnerIdName',
-            CASE WHEN c.OwningBusinessUnit IS NULL THEN '' ELSE convert(nvarchar(100), c.OwningBusinessUnit) END as 'OwningBusinessUnit',
-            CASE WHEN c.StateCode IS NULL THEN 99 ELSE c.StateCode END as 'StateCode',
-            CASE WHEN c.TransactionCurrencyId IS NULL THEN '' ELSE convert(nvarchar(100), c.TransactionCurrencyId) END as 'TransactionCurrencyId',
-            CASE WHEN OpenRevenue_State IS NULL THEN '' ELSE OpenRevenue_State END as 'OpenRevenue_State',
             CASE WHEN [Ldc_CountryIncorporatedIn] IS NULL THEN 0 ELSE [Ldc_CountryIncorporatedIn] END as 'Ldc_CountryIncorporatedIn',
             CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) as 'fee',
             CASE WHEN [Ldc_AcceptanceDate] IS NOT NULL AND [Ldc_TerminationDate] IS NOT NULL AND DATEDIFF(day, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) > 0 
@@ -62,7 +54,7 @@ dt = pd.read_sql(sql, sopdb)
 dt = dt.dropna()
 dt['Ldc_Description'] = dt['Ldc_Description'].apply(replaceNoise)
 
-tcols = ['OwnerIdName', 'OwningBusinessUnit', 'Ldc_CountryIncorporatedIn','TransactionCurrencyId']
+tcols = ['Ldc_CountryIncorporatedIn']
 for col in tcols:
     i = 0
     odict = {}
@@ -79,9 +71,11 @@ desc_key_words = ['facility','isda','intercreditor','repurchase','purchase','age
 
 # cols = ['Ldc_LeadSource','Ldc_Status','Ldc_Trustee','Ldc_FeeType','ga_PerpetualAppointment','CustomerTypeCode','OwnerIdName','OwningBusinessUnit',
 #     'StateCode','TransactionCurrencyId','OpenRevenue_State','Ldc_CountryIncorporatedIn','duration']
-cols = ['Ldc_CountryIncorporatedIn','Ldc_Status','duration','month']
-for col in cols:
+cols_ct = ['Ldc_CountryIncorporatedIn','Ldc_Status','month']
+for col in cols_ct:
     dt[col] = pd.to_numeric(dt[col], errors='coerce')
+
+dt['duration'] = pd.to_numeric(dt['duration'], errors='coerce').astype(int)
 dt['fee'] = pd.to_numeric(dt['fee'], errors='coerce').astype(int)
 
 def word_count(s, w):
@@ -92,35 +86,88 @@ for col in desc_key_words:
 
 dt.loc[:, 'sum_key_word'] = pd.Series(dt[desc_key_words].sum(axis=1), index=dt.index)
 
-cols.extend(desc_key_words)
-cols.append('sum_key_word')
+continuous_cols = desc_key_words
+continuous_cols.extend(['duration','sum_key_word'])
+categorical_cols = cols_ct
 
-X = np.array(dt[cols])
-y = np.array(dt['fee'])
+cols = continuous_cols + categorical_cols
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+X = dt[cols]
+y = dt['fee']
 
-mean = X_train.mean(axis=0)
-std = X_train.std(axis=0)
-X_train = (X_train - mean) / std
-X_test = (X_test - mean) / std
+# split train and test data sets
+spl = np.random.rand(len(dt)) < 0.8
+X_train = X[spl]
+X_test = X[~spl]
+y_train = y[spl]
+y_test = y[~spl]
 
-def build_model():
-    model = keras.Sequential([
-        keras.layers.Dense(128, activation=tf.nn.tanh, input_shape=(X_train.shape[1],)),
-        keras.layers.Dense(64, activation=tf.nn.tanh),
-        keras.layers.Dense(32, activation=tf.nn.tanh),
-        keras.layers.Dense(1)
-    ])
+X_train_continuous = X_train[continuous_cols]
+X_train_categorical = X_train[categorical_cols]
 
-    optimizer = tf.train.AdamOptimizer(0.001) #GradientDescentOptimizer, RMSPropOptimizer
+X_test_continuous = X_test[continuous_cols]
+X_test_categorical = X_test[categorical_cols]
 
-    model.compile(loss='mse',
-                optimizer=optimizer,
-                metrics=['mae'])
-    return model
+# mean = X_train.mean(axis=0)
+# std = X_train.std(axis=0)
+# X_train = (X_train - mean) / std
+# X_test = (X_test - mean) / std
 
-model = build_model()
+# normalizing the continuous columns of both train and test sets to have 0 mean and std of 1
+mean = X_train_continuous.mean(axis=0)
+std = X_train_continuous.std(axis=0)
+X_train_continuous = (X_train_continuous - mean) / std
+X_test_continuous = (X_test_continuous - mean) / std
+
+# Define the embedding input
+ctry_embedding_input = keras.layers.Input(shape=(1,), dtype='int32')
+status_embedding_input = keras.layers.Input(shape=(1,), dtype='int32') 
+month_embedding_input = keras.layers.Input(shape=(1,), dtype='int32') 
+
+# Define the continuous variables input
+continuous_input = keras.layers.Input(shape=(X_train_continuous.shape[1], ))
+
+# define the embedding layers and flatten them
+ctry_embedding = keras.layers.Embedding(output_dim=5, input_dim=len(X_train_categorical['Ldc_CountryIncorporatedIn'])+1, input_length=1)(ctry_embedding_input)
+ctry_embedding = keras.layers.Reshape((5,))(ctry_embedding)
+
+status_embedding = keras.layers.Embedding(output_dim=2, input_dim=8, input_length=1)(status_embedding_input)
+status_embedding = keras.layers.Reshape((2,))(status_embedding)
+
+month_embedding = keras.layers.Embedding(output_dim=2, input_dim=13, input_length=1)(month_embedding_input)
+month_embedding = keras.layers.Reshape((2,))(month_embedding)
+
+all_input = keras.layers.concatenate([continuous_input, ctry_embedding, status_embedding, month_embedding])
+
+# def build_model():
+#     model = keras.Sequential([
+#         keras.layers.Dense(128, activation=tf.nn.tanh, input_shape=(X_train.shape[1],)),
+#         keras.layers.Dense(64, activation=tf.nn.tanh),
+#         keras.layers.Dense(32, activation=tf.nn.tanh),
+#         keras.layers.Dense(1)
+#     ])
+
+#     optimizer = tf.train.AdamOptimizer(0.001) #GradientDescentOptimizer, RMSPropOptimizer
+
+#     model.compile(loss='mse',
+#                 optimizer=optimizer,
+#                 metrics=['mae'])
+#     return model
+
+# model = build_model()
+
+# Define the model
+# dense00 = keras.layers.Dense(units=512, activation=tf.nn.relu)()
+dense0 = keras.layers.Dense(units=256, activation=tf.nn.relu)(all_input)
+dense1 = keras.layers.Dense(units=128, activation=tf.nn.relu)(dense0)
+dense2 = keras.layers.Dense(units=64, activation=tf.nn.relu)(dense1)
+dense3 = keras.layers.Dense(units=32, activation=tf.nn.relu)(dense2)
+dense4 = keras.layers.Dense(units=16, activation=tf.nn.relu)(dense3)
+predictions = keras.layers.Dense(1)(dense4)
+
+model = keras.models.Model(inputs=[continuous_input, ctry_embedding_input, status_embedding_input, month_embedding_input], outputs=predictions)
+
+model.compile(loss='mse', optimizer=tf.train.AdamOptimizer(0.001), metrics=['mae'])
 
 class PrintDot(keras.callbacks.Callback):
   def on_epoch_end(self, epoch, logs):
@@ -132,8 +179,8 @@ EPOCHS = 500
 early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)
 
 # Store training stats
-history = model.fit(X_train, y_train, batch_size=32, epochs=EPOCHS,
-                    validation_split=0.2, verbose=0, shuffle=True,
+history = model.fit([X_train_continuous, X_train_categorical['Ldc_CountryIncorporatedIn'], X_train_categorical['Ldc_Status'], X_train_categorical['month']], y_train, 
+                    batch_size=32, epochs=EPOCHS, validation_split=0.2, verbose=0, shuffle=True,
                     callbacks=[early_stop, PrintDot()])
 
 def plot_history(history):
@@ -147,7 +194,7 @@ def plot_history(history):
 
 plot_history(history)
 
-scores = model.evaluate(X_test, y_test, verbose=0)
+scores = model.evaluate([X_test_continuous, X_test_categorical['Ldc_CountryIncorporatedIn'], X_test_categorical['Ldc_Status'], X_test_categorical['month']], y_test, verbose=0)
 
 print("Testing set %s: %.2f" % (model.metrics_names[1], scores[1]))
 # print(" Mean Abs Error: £{:7.2f}".format(mae))
