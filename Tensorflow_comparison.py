@@ -6,8 +6,6 @@ from tensorflow import keras
 from time import time
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-# from keras.layers import Input, Embedding, Dense
-# from keras.models import Model
 
 plt.style.use('seaborn-poster')
 
@@ -32,22 +30,54 @@ sopdb = pyodbc.connect("Driver={SQL Server Native Client 11.0};"
 
 sql = '''SELECT DISTINCT
             CASE WHEN Ldc_Status IS NULL THEN 0 ELSE Ldc_Status END as 'Ldc_Status',
-            CASE WHEN Ldc_FeeType IS NULL THEN 0 ELSE Ldc_FeeType END as 'Ldc_FeeType',
             CASE WHEN [Ldc_CountryIncorporatedIn] IS NULL THEN 0 ELSE [Ldc_CountryIncorporatedIn] END as 'Ldc_CountryIncorporatedIn',
             CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) as 'fee',
             CASE WHEN [Ldc_AcceptanceDate] IS NOT NULL AND [Ldc_TerminationDate] IS NOT NULL AND DATEDIFF(day, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) > 0 
 	            THEN DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) ELSE 0 END as 'duration',
             CASE WHEN [Ldc_Description] IS NULL THEN '' ELSE [Ldc_Description] END as 'Ldc_Description',
-            CASE WHEN [Ldc_AcceptanceDate] IS NOT NULL THEN DATEPART(month, [Ldc_AcceptanceDate]) ELSE 0 END as 'month'
+            CASE WHEN [Ldc_Description] IS NULL THEN 0 ELSE len([Ldc_Description]) END as 'Len_Ldc_Description',
+            CASE WHEN [Ldc_AcceptanceDate] IS NOT NULL THEN DATEPART(month, [Ldc_AcceptanceDate]) ELSE 0 END as 'month',
+            (select count(l.ldc_appointingcompanyidName) from [SOP_MSCRM].[dbo].[Ldc_appointment] l 
+		        where l.[Ldc_AcceptanceDate] > '01 Oct 2016' and l.ldc_appointingcompanyidName = a.ldc_appointingcompanyidName) as 'app_count',
+            CASE WHEN (select count(l.ldc_appointingcompanyidName) from [SOP_MSCRM].[dbo].[Ldc_appointment] l 
+		        where l.[Ldc_AcceptanceDate] > '01 Oct 2016' and l.ldc_appointingcompanyidName = a.ldc_appointingcompanyidName) > 3 THEN 1 ELSE 0 END as 'is_frequent'
         FROM [SOP_MSCRM].[dbo].[Ldc_appointment] a
         INNER JOIN [SOP_MSCRM].[dbo].[Account] c
         ON a.ldc_appointingcompanyid = c.AccountId AND 
             TRY_CONVERT(UNIQUEIDENTIFIER, a.ldc_appointingcompanyid) IS NOT NULL AND 
             TRY_CONVERT(UNIQUEIDENTIFIER, c.AccountId) IS NOT NULL
         WHERE Ldc_Trustee = 1 AND 
-            CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) >= 300 AND 
+            CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) >= 380 AND 
             CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) <= 1500 AND 
-            (not (ldc_notes like '%discount%' or ldc_notes like '%reduce%' or ldc_notes like '%reduction%' or ldc_notes like '%[%] of%') or Ldc_Notes is null) AND            (Ldc_Description not like '%extension%' and Ldc_Description not like '%expansion%') AND
+            (not (ldc_notes like '%discount%' or ldc_notes like '%reduce%' or ldc_notes like '%reduction%' or ldc_notes like '%[%] of%') or Ldc_Notes is null) AND            
+            (Ldc_Description not like '%extension%' and Ldc_Description not like '%expansion%') AND
+            not (
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 465 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 2) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 550 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 3) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 635 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 4) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 720 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 5) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 805 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 6) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 890 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 7) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 975 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 8) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1060 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 9) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1145 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 10) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1230 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 11) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1315 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 12) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1400 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 13) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1485 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 14) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1570 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 15) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1655 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 16) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1740 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 17) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1825 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 18) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1910 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 19) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 1995 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 20) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2080 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 21) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2165 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 22) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2250 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 23) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2335 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 24) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2420 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) = 25) OR
+                (CONVERT(int, [Ldc_AppointmentFees] / a.[ExchangeRate]) < 2505 AND DATEDIFF(year, [Ldc_AcceptanceDate], [Ldc_TerminationDate]) > 25)
+            ) AND 
             [Ldc_AcceptanceDate] > '01 Oct 2016' '''
 
 dt = pd.read_sql(sql, sopdb)
@@ -55,39 +85,43 @@ dt = dt.dropna()
 dt['Ldc_Description'] = dt['Ldc_Description'].apply(replaceNoise)
 
 tcols = ['Ldc_CountryIncorporatedIn']
+# turn chosen columns into categorical data
 for col in tcols:
     i = 0
     odict = {}
     for sf in set(dt[col]):
         odict[sf] = i
         i = i + 1
-    # if '' in odict: 
-    #     odict[''] = 999
     dt[col] = dt[col].map(odict)
 
-desc_key_words = ['facility','isda','intercreditor','repurchase','purchase','agency_agreement',
-    'loan_agreement','lease_agreement','aircraft_lease','deed','security','share',
-    'series','swap','supplemental','indenture','underwriting_agreement','credit','guarantee','notes_due']
+# list of key words in the description column
+desc_key_words = ['facility','isda','intercreditor','repurchase','purchase','agency_agreement','loan_agreement',
+    'lease_agreement','aircraft_lease','deed','security','share','amend','series','swap','supplement','indenture',
+    'underwriting_agreement','credit','guarantee','notes_due','other related agreement','other related agreements']
 
-# cols = ['Ldc_LeadSource','Ldc_Status','Ldc_Trustee','Ldc_FeeType','ga_PerpetualAppointment','CustomerTypeCode','OwnerIdName','OwningBusinessUnit',
-#     'StateCode','TransactionCurrencyId','OpenRevenue_State','Ldc_CountryIncorporatedIn','duration']
+# categorical columns
 cols_ct = ['Ldc_CountryIncorporatedIn','Ldc_Status','month']
 for col in cols_ct:
     dt[col] = pd.to_numeric(dt[col], errors='coerce')
 
-dt['duration'] = pd.to_numeric(dt['duration'], errors='coerce').astype(int)
+# continuous columns
+cols_tu = ['app_count', 'duration', 'Len_Ldc_Description'] #'is_frequent'
+for col in cols_tu: 
+    dt[col] = pd.to_numeric(dt[col], errors='coerce').astype(int)
 dt['fee'] = pd.to_numeric(dt['fee'], errors='coerce').astype(int)
 
+# function to count key words in the descriptions
 def word_count(s, w):
     return s.count(w)
 
+# key words columns, all are continuous
 for col in desc_key_words: 
     dt.loc[:, col] = pd.Series(dt['Ldc_Description'].apply(lambda x: word_count(x, col.replace('_', ' '))), index=dt.index)
-
-dt.loc[:, 'sum_key_word'] = pd.Series(dt[desc_key_words].sum(axis=1), index=dt.index)
+dt.loc[:, 'sum_key_word'] = pd.Series(dt[desc_key_words].sum(axis=1).apply(lambda x: 1 if x == 0 else x), index=dt.index)
 
 continuous_cols = desc_key_words
-continuous_cols.extend(['duration','sum_key_word'])
+continuous_cols.extend(cols_tu)
+continuous_cols.append('sum_key_word')
 categorical_cols = cols_ct
 
 cols = continuous_cols + categorical_cols
@@ -108,18 +142,14 @@ X_train_categorical = X_train[categorical_cols]
 X_test_continuous = X_test[continuous_cols]
 X_test_categorical = X_test[categorical_cols]
 
-# mean = X_train.mean(axis=0)
-# std = X_train.std(axis=0)
-# X_train = (X_train - mean) / std
-# X_test = (X_test - mean) / std
-
+# interestingly, no normalization produces better results on this data set, but only mildly better though
 # normalizing the continuous columns of both train and test sets to have 0 mean and std of 1
-mean = X_train_continuous.mean(axis=0)
-std = X_train_continuous.std(axis=0)
-X_train_continuous = (X_train_continuous - mean) / std
-X_test_continuous = (X_test_continuous - mean) / std
+# mean = X_train_continuous.mean(axis=0)
+# std = X_train_continuous.std(axis=0)
+# X_train_continuous = (X_train_continuous - mean) / std
+# X_test_continuous = (X_test_continuous - mean) / std
 
-# Define the embedding input
+# Define the embedding inputs
 ctry_embedding_input = keras.layers.Input(shape=(1,), dtype='int32')
 status_embedding_input = keras.layers.Input(shape=(1,), dtype='int32') 
 month_embedding_input = keras.layers.Input(shape=(1,), dtype='int32') 
@@ -137,27 +167,10 @@ status_embedding = keras.layers.Reshape((2,))(status_embedding)
 month_embedding = keras.layers.Embedding(output_dim=2, input_dim=13, input_length=1)(month_embedding_input)
 month_embedding = keras.layers.Reshape((2,))(month_embedding)
 
+# combine all inputs
 all_input = keras.layers.concatenate([continuous_input, ctry_embedding, status_embedding, month_embedding])
 
-# def build_model():
-#     model = keras.Sequential([
-#         keras.layers.Dense(128, activation=tf.nn.tanh, input_shape=(X_train.shape[1],)),
-#         keras.layers.Dense(64, activation=tf.nn.tanh),
-#         keras.layers.Dense(32, activation=tf.nn.tanh),
-#         keras.layers.Dense(1)
-#     ])
-
-#     optimizer = tf.train.AdamOptimizer(0.001) #GradientDescentOptimizer, RMSPropOptimizer
-
-#     model.compile(loss='mse',
-#                 optimizer=optimizer,
-#                 metrics=['mae'])
-#     return model
-
-# model = build_model()
-
 # Define the model
-# dense00 = keras.layers.Dense(units=512, activation=tf.nn.relu)()
 dense0 = keras.layers.Dense(units=256, activation=tf.nn.relu)(all_input)
 dense1 = keras.layers.Dense(units=128, activation=tf.nn.relu)(dense0)
 dense2 = keras.layers.Dense(units=64, activation=tf.nn.relu)(dense1)
@@ -176,10 +189,11 @@ class PrintDot(keras.callbacks.Callback):
 
 EPOCHS = 500
 
-early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=20)
+# stop the training when performance is idle 
+early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=50)
 
 # Store training stats
-history = model.fit([X_train_continuous, X_train_categorical['Ldc_CountryIncorporatedIn'], X_train_categorical['Ldc_Status'], X_train_categorical['month']], y_train, 
+history = model.fit([X_train_continuous, X_train_categorical['Ldc_CountryIncorporatedIn'], X_train_categorical['Ldc_Status'], X_train_categorical['month']], y_train,
                     batch_size=32, epochs=EPOCHS, validation_split=0.2, verbose=0, shuffle=True,
                     callbacks=[early_stop, PrintDot()])
 
@@ -197,8 +211,12 @@ plot_history(history)
 scores = model.evaluate([X_test_continuous, X_test_categorical['Ldc_CountryIncorporatedIn'], X_test_categorical['Ldc_Status'], X_test_categorical['month']], y_test, verbose=0)
 
 print("Testing set %s: %.2f" % (model.metrics_names[1], scores[1]))
-# print(" Mean Abs Error: £{:7.2f}".format(mae))
 
 with open ('C:\\Users\\AdmYL\\Desktop\\PriceOptimizer\\tensorflow_comparison.txt', 'a', encoding='utf-8') as m: 
     m.write("Testing set %s: %.2f" % (model.metrics_names[1], scores[1]))
-    # m.write("Testing set Mean Abs Error: £{:7.2f} \n\r\n\r".format(mae))
+
+# save the prediction result in to a spreadsheet for further analysis
+pred = model.predict([X_test_continuous, X_test_categorical['Ldc_CountryIncorporatedIn'], X_test_categorical['Ldc_Status'], X_test_categorical['month']], verbose=0)
+rl = list(zip(pred, y_test, X_test_continuous['sum_key_word'], X_test_continuous['duration'], X_test_continuous['app_count'], X_test_categorical['Ldc_CountryIncorporatedIn'], X_test_categorical['Ldc_Status'], X_test_categorical['month']))
+df_rl = pd.DataFrame(data=rl, columns=['prediction', 'y_test', 'sum_key_word', 'duration', 'app_count', 'Ldc_CountryIncorporatedIn', 'Ldc_Status', 'month'])
+df_rl.to_csv('C:\\Users\\AdmYL\\Desktop\\PriceOptimizer\\tensorflow_pred_result.csv', index=False, header=True)

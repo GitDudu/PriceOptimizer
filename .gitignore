@@ -1,3 +1,4 @@
 *.png
 tensorflow_comparison.txt
 .vscode/
+*.csv
